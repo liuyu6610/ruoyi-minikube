@@ -1,0 +1,730 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ruoyi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-mysql
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-mysql
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-mysql
+  template:
+    metadata:
+      labels:
+        app: ruoyi-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:5.7
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+            - name: MYSQL_DATABASE
+              value: ry-cloud
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            - name: mysql-init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: mysql-data
+          emptyDir: {}
+        - name: mysql-init
+          configMap:
+            name: ruoyi-mysql-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-redis
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-redis
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-redis
+  template:
+    metadata:
+      labels:
+        app: ruoyi-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          imagePullPolicy: IfNotPresent
+          args: ["redis-server", "--save", "", "--appendonly", "no"]
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-nacos
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-nacos
+  ports:
+    - name: http
+      port: 8848
+      targetPort: 8848
+    - name: grpc1
+      port: 9848
+      targetPort: 9848
+    - name: grpc2
+      port: 9849
+      targetPort: 9849
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-nacos
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-nacos
+  template:
+    metadata:
+      labels:
+        app: ruoyi-nacos
+    spec:
+      containers:
+        - name: nacos
+          image: nacos/nacos-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODE
+              value: standalone
+            - name: CUSTOM_SEARCH_NAMES
+              value: application
+            - name: CUSTOM_SEARCH_LOCATIONS
+              value: file:/home/nacos/custom-conf/
+            - name: NACOS_AUTH_ENABLE
+              value: "false"
+            - name: NACOS_AUTH_TOKEN
+              value: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+            - name: NACOS_AUTH_IDENTITY_KEY
+              value: "serverIdentity"
+            - name: NACOS_AUTH_IDENTITY_VALUE
+              value: "security"
+            - name: JVM_XMS
+              value: "256m"
+            - name: JVM_XMX
+              value: "256m"
+            - name: JVM_XMN
+              value: "128m"
+            - name: PREFER_HOST_MODE
+              value: hostname
+            - name: SPRING_DATASOURCE_PLATFORM
+              value: mysql
+            - name: MYSQL_SERVICE_HOST
+              value: ruoyi-mysql
+            - name: MYSQL_SERVICE_PORT
+              value: "3306"
+            - name: MYSQL_SERVICE_USER
+              value: "root"
+            - name: MYSQL_SERVICE_PASSWORD
+              value: "password"
+            - name: MYSQL_SERVICE_DB_NAME
+              value: "ry-config"
+          ports:
+            - containerPort: 8848
+            - containerPort: 9848
+            - containerPort: 9849
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 800m
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 8848
+            initialDelaySeconds: 90
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 8848
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+          volumeMounts:
+            - name: nacos-conf
+              mountPath: /home/nacos/custom-conf
+      volumes:
+        - name: nacos-conf
+          configMap:
+            name: ruoyi-nacos-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-gateway
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-gateway
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-gateway
+  template:
+    metadata:
+      labels:
+        app: ruoyi-gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ruoyi-gateway:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 80m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-auth
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-auth
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-auth
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-auth
+  template:
+    metadata:
+      labels:
+        app: ruoyi-auth
+    spec:
+      containers:
+        - name: auth
+          image: ruoyi-auth:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9200
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9200
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-system
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-system
+  ports:
+    - name: http
+      port: 9201
+      targetPort: 9201
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-system
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-system
+  template:
+    metadata:
+      labels:
+        app: ruoyi-system
+    spec:
+      containers:
+        - name: system
+          image: ruoyi-modules-system:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9201
+          resources:
+            requests:
+              cpu: 80m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9201
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9201
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-gen
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-gen
+  ports:
+    - name: http
+      port: 9202
+      targetPort: 9202
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-gen
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-gen
+  template:
+    metadata:
+      labels:
+        app: ruoyi-gen
+    spec:
+      containers:
+        - name: gen
+          image: ruoyi-modules-gen:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9202
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9202
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9202
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-job
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-job
+  ports:
+    - name: http
+      port: 9203
+      targetPort: 9203
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-job
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-job
+  template:
+    metadata:
+      labels:
+        app: ruoyi-job
+    spec:
+      containers:
+        - name: job
+          image: ruoyi-modules-job:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9203
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9203
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9203
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-file
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-file
+  ports:
+    - name: http
+      port: 9300
+      targetPort: 9300
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-file
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-file
+  template:
+    metadata:
+      labels:
+        app: ruoyi-file
+    spec:
+      containers:
+        - name: file
+          image: ruoyi-modules-file:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9300
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9300
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9300
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+          volumeMounts:
+            - name: upload
+              mountPath: /home/ruoyi/uploadPath
+      volumes:
+        - name: upload
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-monitor
+  namespace: ruoyi
+spec:
+  selector:
+    app: ruoyi-monitor
+  ports:
+    - name: http
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-monitor
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-monitor
+  template:
+    metadata:
+      labels:
+        app: ruoyi-monitor
+    spec:
+      containers:
+        - name: monitor
+          image: ruoyi-visual-monitor:jre17-1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: ruoyi-nacos:8848
+            - name: SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR
+              value: ruoyi-nacos:8848
+          ports:
+            - containerPort: 9100
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 768Mi
+          readinessProbe:
+            tcpSocket:
+              port: 9100
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 9100
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-nginx
+  namespace: ruoyi
+spec:
+  type: NodePort
+  selector:
+    app: ruoyi-nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-nginx
+  namespace: ruoyi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruoyi-nginx
+  template:
+    metadata:
+      labels:
+        app: ruoyi-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: ruoyi-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 12
