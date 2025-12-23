@@ -4,11 +4,6 @@
 
 ## 1. 前置条件
 
-- Windows 主机已安装并可用：
-  - Docker Desktop（或 Docker Engine）
-  - kubectl
-  - minikube
-- minikube 已启动（你已经确认 `minikube status` 为 Running）
 - 已安装 ingress-nginx（可选；本方案默认使用 NodePort 暴露 nginx）
 
 ## 2. 一键部署
@@ -71,8 +66,3 @@ kubectl logs -n ruoyi deploy/ruoyi-gateway --tail=200
 ```powershell
 kubectl describe pod -n ruoyi <pod-name>
 ```
-
-## 5. 重要约定
-
-- MySQL 数据使用 `emptyDir`（不做持久化），**只保证服务能起来**。
-- 所有服务均配置了较严格的 `requests/limits`，如需更稳可以自行调大。
